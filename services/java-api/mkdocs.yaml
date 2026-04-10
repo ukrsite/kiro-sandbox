@@ -1,0 +1,9 @@
+site_name: ${{values.title}}
+site_description: ${{values.description}}
+site_author: Ericsson, BNEW SAN Tools
+repo_url: https://${{values.repoBase}}/${{values.repoOwner}}/${{values.repoName}}
+plugins: 
+  - techdocs-core
+nav:
+  - Home: ./index.md
+  - Helm Chart: https://${{values.repoBase}}/${{values.repoOwner}}/${{values.repoName}}/-/tree/main/chart/${{values.name}}

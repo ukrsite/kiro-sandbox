@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=65.5.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acceptance-criteria-refiner-backend"
+version = "0.1.0"
+description = "acceptance-criteria-refiner-backend"
+authors = [
+  { name = "name", email = "email" }
+]
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["app"]

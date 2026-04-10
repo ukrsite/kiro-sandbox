@@ -1,0 +1,25 @@
+# Root pipeline — detects per-service changes and triggers child pipelines.
+# Add more trigger jobs here as other services get their own .gitlab-ci.yml.
+
+default:
+  tags:
+    - santi-aws-genai
+    
+stages:
+  - trigger
+
+trigger:python-processor:
+  stage: trigger
+  trigger:
+    include: services/python-processor/.gitlab-ci.yml
+    strategy: depend          # root pipeline mirrors child status
+  rules:
+    - if: '$CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: $CI_COMMIT_MESSAGE =~ /\[no ci\]/i
+      when: never
+    - changes:
+        paths:
+          - services/python-processor/**/*
+      when: on_success
+

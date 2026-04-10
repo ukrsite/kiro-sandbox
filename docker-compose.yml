@@ -1,0 +1,90 @@
+# Sandbox multi-service stack.
+# From repo root:  docker compose -f sandbox/docker-compose.yml up --build
+# From sandbox/:   docker compose up --build
+#
+# Services:
+#   java-api          http://localhost:8080  (Spring Boot + H2, Swagger at /swagger-ui.html)
+#   python-processor  http://localhost:5000  (FastAPI, Swagger at /docs)
+#   node-gateway      http://localhost:3000  (Express, Swagger at /api-docs)
+#   swagger-ui        http://localhost:8888  ← SINGLE ENTRY POINT for all APIs
+
+services:
+  java-api:
+    build:
+      context: services/java-api
+    container_name: sandbox-java-api
+    ports:
+      - "8088:8080"  # host:container
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  python-processor:
+    build:
+      context: services/python-processor
+    container_name: sandbox-python-processor
+    ports:
+      - "5000:5000"
+    environment:
+      - JAVA_API_URL=http://java-api:8080
+    volumes:
+      - ./services/python-processor/src:/app/src  # hot reload
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "5000", "--reload"]
+    depends_on:
+      java-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  node-gateway:
+    build:
+      context: services/node-gateway
+    container_name: sandbox-node-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - JAVA_API_URL=http://java-api:8080
+      - PYTHON_PROCESSOR_URL=http://python-processor:5000
+    volumes:
+      - ./services/node-gateway/src:/app/src  # hot reload
+    command: ["npx", "nodemon", "src/index.js"]
+    depends_on:
+      java-api:
+        condition: service_healthy
+      python-processor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: sandbox-swagger-ui
+    ports:
+      - "8888:8080"
+    environment:
+      URLS: >-
+        [
+          {"url":"http://localhost:8088/v3/api-docs","name":"Java User API"},
+          {"url":"http://localhost:5000/openapi.json","name":"Python Data Processor"},
+          {"url":"http://localhost:3000/api-docs-json","name":"Node Gateway"}
+        ]
+      BASE_URL: /
+      URLS_PRIMARY_NAME: "Java User API"
+    depends_on:
+      java-api:
+        condition: service_healthy
+      python-processor:
+        condition: service_healthy
+      node-gateway:
+        condition: service_healthy

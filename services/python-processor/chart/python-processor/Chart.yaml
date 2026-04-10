@@ -1,0 +1,10 @@
+apiVersion: v2
+name: python-processor
+type: application
+description: A Helm chart for deploying python-processor
+appVersion: 0.0.1
+version: 0.0.1
+dependencies:
+ - name: dmp-base-helm-chart
+   version: "0.79.5"
+   repository: 'https://arm.seli.gic.ericsson.se/artifactory/api/helm/proj-santi-genai-helm-local'

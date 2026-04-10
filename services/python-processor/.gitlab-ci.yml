@@ -1,0 +1,264 @@
+variables:
+  SERVICE_NAME: python-processor  # used in place of CI_PROJECT_NAME for ECR/helm jobs
+  PYTHON_IMAGE: "armdocker.rnd.ericsson.se/dockerhub-ericsson-remote/python:3.12-alpine" 
+  PIP_EXTRA_INDEX_URL: "https://${SVC_ACCOUNT_USER}:${SVC_ACCOUNT_PASS}@arm.seli.gic.ericsson.se/artifactory/api/pypi/proj-santi-genai-pypi-local/simple"
+  ARTIFACTORY_PROJECT_KEY: "santi-genai"
+  DOCKER_REGISTRY: armdocker.rnd.ericsson.se
+  DOCKER_IMAGE_REPOSITORY: armdocker.rnd.ericsson.se/proj-$ARTIFACTORY_PROJECT_KEY/python-processor
+  KANIKO_DOCKER_CONFIGS: "${DOCKER_REGISTRY}:${SVC_ACCOUNT_USER}:${SVC_ACCOUNT_PASS}" 
+  PIPELINE_IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID} 
+  KANIKO_IMAGE: armdocker.rnd.ericsson.se/proj-sant-common/kanikoexecutordebug:1.24.0-0.245.0
+  # PROXY: http://www-proxy.ericsson.se:8080
+  # NO_PROXY: ".ericsson.se,.ericsson.com"
+  LERNA_PUBLISH: "false"
+  HELM_DEPENDENCY_REPO_URL: ${ARTIFACTORY_URL}/artifactory/api/helm/proj-${ARTIFACTORY_PROJECT_KEY}-helm-local 
+  ARTIFACTORY_REPO: $DOCKER_REGISTRY/proj-$ARTIFACTORY_PROJECT_KEY
+  HELM_EXPERIMENTAL_OCI: 1
+  ARTIFACTORY_URL: https://arm.seli.gic.ericsson.se
+  HELM_HELM_REPO_URL: ${ARTIFACTORY_URL}/artifactory/api/helm/proj-${ARTIFACTORY_PROJECT_KEY}-helm-local
+  BASE_HELM_VERSION: 0.79.5
+  BASE_HELM_VERSION_ARM: 0.79.5
+  ## Enable ACR Sync
+  HELM_ACR: "false"
+  HELM_ACR_DOCKER: "false"
+  HELM_IMAGE: 905418281081.dkr.ecr.us-east-1.amazonaws.com/ci-cd/helm-yq:0.0.2
+  HELM_CHART_PATH: chart/python-processor
+  CRANE_IMAGE: 905418281081.dkr.ecr.us-east-1.amazonaws.com/ci-cd/crane:0.108.4
+  ## Enable Python RPM package
+  PYTHON_PACKAGE_ENABLED: "false"
+  ## Enable SCAS Scanning
+  SCAS_SCANNING_ENABLED: "false"
+  SCAS_GRAB_ENABLED: "false"
+  SCAS_BULK_REQUEST_NEW_COMPONENT_ENABLED: "false"
+  SCAS_BULK_REQUEST_REUSE_COMPONENT_ENABLED: "false"
+  SCAS_USERNAME: ${SCAS_USERNAME} 
+  SCAS_PASSWORD: ${SCAS_PASSWORD} 
+  SCAS_PRODUCT_ID: ${SCAS_PRODUCT_ID} 
+  SCAS_PRODUCT_NAME: ${SCAS_PRODUCT_NAME} 
+  SCAS_CONTEXT_ID: ${SCAS_CONTEXT_ID} 
+  SCAS_BULK_REQUEST_ENABLED: "false"
+  ## Aggregate reports
+  AGGREGATE_REPORTS_ENABLED: "true"
+  ## Fossa testing
+  FOSSA_ANALYSE: "false" 
+  FOSSA_API_KEY: ${FOSSA_API_KEY}
+  FOSSA_URL: ${FOSSA_URL}
+  ## Enable SAST-Scanning stage
+  SAST_SCANNING_ENABLED: "true"
+  SAST_DEFAULT_ANALYZERS: "bandit, flake8, semgrep-sast" # enable helm-sast, kubesec-sast when you have chart ready
+  SAST_EXCLUDED_ANALYZERS: ""
+  ## Enable Secret Detection
+  SECRET_DETECTION_ENABLED: "true"
+  ## Enable Container Scanning
+  CONTAINER_SCANNING_ENABLED: "true"
+  ## Enable SonarQube
+  SONAR_ANALYSIS_ENABLED: "true" 
+  ## Enable PyTest job/s
+  PYTEST_STAGE_ENABLED: "false" ### needs to enable
+  ## Enable Helm job/s
+  HELM_PUBLISH: "true"
+  HELM_CREATE: "true"
+  HELM_ECR: "true" 
+  # Runner
+  COSIGN_RUNNER: santi-aws-genai
+  # ==== GPG Signing Configuration ====
+  SIGNING_METHOD: "gpg"                    
+  GITLAB_BOT_ACCESS_TOKEN: ${GL_TOKEN}
+  GITLAB_URL: ${CI_SERVER_URL}
+  GIT_AUTHOR_NAME: "SANTGENAIGITLAB"
+  GIT_AUTHOR_EMAIL: "SANTGENAIGITLAB@ericsson.com"
+  BOT_GPG_PRIVATE_KEY: ${GPG_PRIVATE_KEY}  # base64 of private key
+  BOT_GPG_PUBLIC_KEY: ${GPG_PUBLIC_KEY}    # base64 of public key
+
+include:
+  - project: 'san-tools-technology-platform/common-architecture-tools/devops-templates'
+    file:
+      - '/Python/backend-pipeline.gitlab-ci.yml'
+    ref: main
+
+workflow:
+  rules:
+    # Only run when triggered by the root parent pipeline
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: always
+    - when: never
+
+# Fall back to current .version when no new release is needed
+version:
+  script:
+    - apk update --quiet
+    - apk add --no-cache --quiet git yq jq
+    - npm install -g --silent semantic-release
+        @semantic-release/changelog
+        @semantic-release/git
+        @semantic-release/gitlab
+        @semantic-release/commit-analyzer
+        @semantic-release/release-notes-generator
+    - |
+      set +e
+      CURRENT_VERSION=$(cat services/python-processor/.version | tr -d '[:space:]')
+
+      if [ "$CI_COMMIT_REF_NAME" = "main" ]; then
+        rm -f .releaserc
+        echo '{
+          "branches": ["main"],
+          "plugins": [
+            "@semantic-release/commit-analyzer",
+            "@semantic-release/release-notes-generator",
+            "@semantic-release/changelog",
+            ["@semantic-release/git", {"assets": ["CHANGELOG.md", ".version"], "message": "chore(release): ${nextRelease.version} [skip ci]"}],
+            "@semantic-release/gitlab"
+          ]
+        }' > .releaserc
+        echo "Running semantic-release dry run to get next version..."
+        SR_OUTPUT=$(npx semantic-release --dry-run --repository-url="https://$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME.git" 2>&1)
+        echo "$SR_OUTPUT"
+        SEMANTIC_VERSION=$(echo "$SR_OUTPUT" | grep -oE 'The next release version is [0-9]+\.[0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        if [ -z "$SEMANTIC_VERSION" ]; then
+          echo "No new release detected, using current version from .version file"
+          SEMANTIC_VERSION="$CURRENT_VERSION"
+        fi
+      else
+        # Non-main branches: use base version + short commit hash
+        SHORT_SHA=$(echo "$CI_COMMIT_SHORT_SHA" | head -c 8)
+        SEMANTIC_VERSION="${CURRENT_VERSION}-${SHORT_SHA}"
+        echo "Branch build — using hash-based version: $SEMANTIC_VERSION"
+      fi
+
+      set -e
+      echo "Build version: $SEMANTIC_VERSION"
+      echo "$SEMANTIC_VERSION" > .current-version
+      echo "$SEMANTIC_VERSION" > .version
+  artifacts:
+    paths:
+      - .current-version
+      - .version
+
+container_scanning:
+  allow_failure: true
+
+sonarqube:
+  allow_failure: true
+
+cosign-sign-setup:
+  rules:
+    - when: never
+
+cosign-verify-setup:
+  rules:
+    - when: never
+
+vars-for-cosign:
+  rules:
+    - when: never
+
+crane-digest:
+  rules:
+    - when: never
+
+# Override helm jobs to use SERVICE_NAME instead of CI_PROJECT_NAME
+create helm chart:
+  extends: .helm_create
+  stage: pack
+  script:
+    - !reference [.get-version, script]
+    - !reference [.get-pipeline-version, script]
+    - |
+      if [[ -n "$BASE_HELM_VERSION_ARM" ]]; then
+        yq eval -i '(.dependencies[0].version) = "'"${BASE_HELM_VERSION_ARM}"'"' chart/${SERVICE_NAME}/Chart.yaml
+      fi
+    - yq eval -i ".container.image.tag = \"${PIPELINE_IMAGE_TAG}\"" chart/${SERVICE_NAME}/values.yaml
+    - helm repo add --pass-credentials base-helm ${HELM_DEPENDENCY_REPO_URL} --username ${SVC_ACCOUNT_USER} --password ${SVC_ACCOUNT_PASS}
+    - helm package -u "chart/${SERVICE_NAME}" --version ${PIPELINE_VERSION} --app-version ${PIPELINE_IMAGE_TAG}
+    - wget --user ${SVC_ACCOUNT_USER} --password ${SVC_ACCOUNT_PASS} --method PUT --body-file=./${SERVICE_NAME}-${PIPELINE_VERSION}.tgz "${HELM_REPO_URL}/${SERVICE_NAME}-${PIPELINE_VERSION}.tgz"
+
+publish helm chart:
+  extends: .helm_publish
+  stage: deploy
+  script:
+    - !reference [.get-version, script]
+    - !reference [.get-pipeline-version, script]
+    - |
+      helm repo add --pass-credentials helm-repo ${HELM_HELM_REPO_URL} --username ${SVC_ACCOUNT_USER} --password ${SVC_ACCOUNT_PASS}
+      helm pull helm-repo/${SERVICE_NAME} --version ${PIPELINE_VERSION} --untar
+      yq eval -i ".container.image.tag = \"${VERSION}\"" ${SERVICE_NAME}/values.yaml
+      helm repo add --pass-credentials base-helm ${HELM_DEPENDENCY_REPO_URL} --username ${SVC_ACCOUNT_USER} --password ${SVC_ACCOUNT_PASS}
+      helm package "${SERVICE_NAME}" --version ${VERSION} --app-version ${VERSION}
+      wget --user ${SVC_ACCOUNT_USER} --password ${SVC_ACCOUNT_PASS} --method PUT --body-file=./${SERVICE_NAME}-${VERSION}.tgz "${HELM_REPO_URL}/${SERVICE_NAME}-${VERSION}.tgz"
+
+# Override to use SERVICE_NAME instead of CI_PROJECT_NAME for ECR repo
+publish container ECR:
+  extends: .crane-publish-ecr
+  script:
+    - !reference [.get-version, script]
+    - !reference [.get-pipeline-version, script]
+    - crane auth login -u $SVC_ACCOUNT_USER -p $SVC_ACCOUNT_PASS $DOCKER_REGISTRY
+    - until [ $CRANE_TRY -eq 0 ] || crane pull $DOCKER_IMAGE_REPOSITORY:$PIPELINE_IMAGE_TAG ${SERVICE_NAME}.tar ; do
+        echo $CRANE_TRY;
+        echo "Not Found ${SERVICE_NAME} with version ${VERSION}";
+        CRANE_TRY=$(expr $CRANE_TRY - 1);
+        sleep $CRANE_SLEEP;
+      done
+    - ECR_PASS=$(aws ecr get-login-password --region ${AWS_REGION})
+    - crane auth login -u AWS -p $ECR_PASS $ECR_REPO_URL
+    - crane push ${SERVICE_NAME}.tar $ECR_REPO_URL/${SERVICE_NAME}:$VERSION
+
+# Override to use SERVICE_NAME instead of CI_PROJECT_NAME for helm chart paths
+helm publis ECR:
+  extends: .helm_publis_ECR
+  script:
+    - !reference [.get-version, script]
+    - !reference [.get-pipeline-version, script]
+    - |
+      export VERSION=$(cat .current-version)
+      export HELM_EXPERIMENTAL_OCI=1
+      helm repo add --pass-credentials base-helm ${HELM_DEPENDENCY_REPO_URL} --username ${SVC_ACCOUNT_USER} --password ${SVC_ACCOUNT_PASS}
+      aws ecr get-login-password --region "${AWS_REGION}" | helm registry login --username AWS --password-stdin "${HELM_ECR_REPO_URL}"
+      yq eval -i '(.dependencies[0].repository) = "oci://'"${HELM_ECR_REPO_URL}"'"' chart/${SERVICE_NAME}/Chart.yaml
+      yq eval -i '(.dependencies[0].version) = "'"${BASE_HELM_VERSION}"'"' chart/${SERVICE_NAME}/Chart.yaml
+      yq eval -i '(.container.image.repository) = "'"${HELM_ECR_REPO_URL}/${SERVICE_NAME}"'"' chart/${SERVICE_NAME}/values.yaml
+      yq eval -i '(.container.image.tag) = "'"${VERSION}"'"' chart/${SERVICE_NAME}/values.yaml
+      helm package -u "chart/${SERVICE_NAME}" --version $VERSION --app-version $VERSION
+      helm push ${SERVICE_NAME}-${VERSION}.tgz "oci://$HELM_ECR_REPO_URL/helm" --debug
+
+default:
+  tags:
+    - santi-aws-genai
+  before_script:
+    # The shared template reads .current-version and chart/$CI_PROJECT_NAME from CWD (repo root).
+    # Symlink the chart into the location the template expects.
+    # NOTE: .current-version is written by the version job as a pipeline artifact — do NOT
+    # overwrite it with the symlink; just ensure it exists as a fallback if the artifact is absent.
+    - |
+      if [ ! -f "${CI_PROJECT_DIR}/.current-version" ]; then
+        ln -sf "${CI_PROJECT_DIR}/services/python-processor/.version" "${CI_PROJECT_DIR}/.current-version"
+      fi
+    - mkdir -p "${CI_PROJECT_DIR}/chart"
+    - ln -sfn "${CI_PROJECT_DIR}/services/python-processor/chart/python-processor" "${CI_PROJECT_DIR}/chart/${SERVICE_NAME}"
+
+# Override the build container job — point Kaniko at the service subdirectory
+# since  CI_PROJECT_DIR is the monorepo root when triggered as a child pipeline
+build container:
+  stage: pack
+  image: ${KANIKO_IMAGE}
+  variables:
+    SERVICE_DIR: "${CI_PROJECT_DIR}/services/python-processor"
+  script:
+    - echo "Building image with Artifactory PyPI support"
+    - mkdir -p /kaniko/.docker
+    - |
+      echo "{\"auths\":{\"${DOCKER_REGISTRY}\":{\"auth\":\"$(echo -n ${SVC_ACCOUNT_USER}:${SVC_ACCOUNT_PASS} | base64)\"}}}" > /kaniko/.docker/config.json
+    - |
+      /kaniko/executor \
+        --context "${SERVICE_DIR}" \
+        --dockerfile "${SERVICE_DIR}/Dockerfile" \
+        --destination "${DOCKER_IMAGE_REPOSITORY}:${PIPELINE_IMAGE_TAG}" \
+        --build-arg SVC_ACCOUNT_USER="${SVC_ACCOUNT_USER}" \
+        --build-arg SVC_ACCOUNT_PASS="${SVC_ACCOUNT_PASS}" \
+        --build-arg PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}" \
+        --build-arg http_proxy="${PROXY}" \
+        --build-arg https_proxy="${PROXY}" \
+        --build-arg no_proxy="${NO_PROXY}" \
+        --cache=true \
+        --cache-ttl=24h \
+        --use-new-run

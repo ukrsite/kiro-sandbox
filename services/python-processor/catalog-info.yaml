@@ -1,0 +1,24 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: python-processor
+  description: User Acceptance Tests Generator Backend Service
+  tags:
+    - python-processor
+    - python
+    - developer-portal
+    - testing
+    - jira
+  links:
+    - url: https://github.com/example/python-processor
+      title: Source Code
+      icon: catalog
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    sonarqube.org/project-key: python-processor
+    feedback/type: 'JIRA'
+spec:
+  type: microservice
+  lifecycle: experimental
+  owner: qa-team
+  system: testing-tools

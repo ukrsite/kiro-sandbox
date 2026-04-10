@@ -1,0 +1,8 @@
+# yaml, yml, sh and py files will be always coverted to LF EOL
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.sql text eol=lf
+*.xml text eol=lf
+*.js text eol=lf
