@@ -9,7 +9,7 @@ It is managed automatically by the AI-DLC Strands Agent — do not edit manually
 {
   "project_type": "unknown",
   "workspace_root": "/home/sk/vscode/aws-sagents-dlc/kiro-sandbox/services/java-api",
-  "last_completed_stage": "functional-design",
+  "last_completed_stage": "infrastructure-design",
   "completed_stages": [
     "workspace-detection",
     "reverse-engineering",
@@ -20,9 +20,12 @@ It is managed automatically by the AI-DLC Strands Agent — do not edit manually
     "units-generation",
     "code-generation",
     "build-and-test",
-    "functional-design"
+    "functional-design",
+    "nfr-requirements",
+    "nfr-design",
+    "infrastructure-design"
   ],
-  "current_stage": "nfr-requirements",
-  "updated_at": "2026-05-14T19:30:05.133184+00:00"
+  "current_stage": "code-generation",
+  "updated_at": "2026-05-14T19:38:25.386897+00:00"
 }
 ```
